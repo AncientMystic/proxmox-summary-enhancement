@@ -1,0 +1,11 @@
+[Unit]
+Description=PVE Enhanced Sensors collector (temps + GPU + RAPL watts)
+After=nvidia-vgpu-mgr.service network.target
+Wants=nvidia-vgpu-mgr.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pve-enhanced-collect
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run PVE Enhanced Sensors collector every 10s (waits 60s after boot)
+
+[Timer]
+OnBootSec=60s
+OnUnitActiveSec=10s
+AccuracySec=2s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

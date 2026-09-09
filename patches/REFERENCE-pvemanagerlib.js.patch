@@ -1,0 +1,12 @@
+REFERENCE — pvemanagerlib.js (pve-mods v8.0.4 pattern, adapted to 9.2.11 StatusView)
+File: /usr/share/pve-manager/js/pvemanagerlib.js, Ext.define PVE.node.StatusView
+
+- height 300->420 in pve-mods; here height 350->470 (9.2.11 base has CPU/RAM/swap + CPUs + Kernel + Boot Mode + Manager Version)
+- 6 new pmxInfoWidget rows after Manager Version (even count preserves 2-col table):
+  cputemp (valueField/maxField + render_node_temp),
+  GPU temp/util/power (custom render_gpu_text),
+  gpupower/cpupowerw/dramw (textField + render_enhanced_watts),
+  gpumem (valueField/maxField + render_node_size_usage)
+- PVE.node.Summary: enhancedStore (UpdateStore -> /enhanced-history, 10s) + 3 charts after Memory Pressure Stall:
+  GPU Power/Temp/Usage, CPU Package Power, DRAM Power
+Original: https://raw.githubusercontent.com/alexleigh/pve-mods/main/v8.0.4-pwt4.0.6/patches/pvemanagerlib.js.patch

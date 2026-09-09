@@ -1,0 +1,15 @@
+REFERENCE — Nodes.pm (pve-mods v8.0.4 pattern, adapted to 9.2.11)
+File: /usr/share/perl5/PVE/API2/Nodes.pm, in status method after rootfs block, before return $res;
+
+  my %sensors_config = (
+    cputemp => { jsonpath => ['coretemp-isa-0000','Package id 0'], valkey => 'temp1_input', critkey => 'temp1_crit' },
+  );
+  my $sensors = eval { decode_json(`sensors -j`); };
+  -> $res->{cputemp} = { used => ..., total => ... }
+
+This repo does that PLUS:
+  gputemp/gpuutil/gpupower via one nvidia-smi call,
+  cpupowerw/dramw via /run/pve-enhanced-live.json (RAPL, same domains as pcm-power),
+  new method enhanced-history serving /var/lib/pve-enhanced/history.json.
+See src/patch-backend.py for exact idempotent insertion (anchors: return $res; + netstat method).
+Original: https://raw.githubusercontent.com/alexleigh/pve-mods/main/v8.0.4-pwt4.0.6/patches/Nodes.pm.patch

@@ -1,0 +1,10 @@
+REFERENCE — proxmoxlib.js (pve-mods v8.0.4 pattern)
+File: /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js, Proxmox.Utils
+
+  render_node_temp: function(record) {
+    if (!record || !Ext.isNumeric(record.used) || !Ext.isNumeric(record.total)) return '-';
+    return record.used.toFixed(1) + '°C (crit: ' + record.total.toFixed(1) + '°C)';
+  },
+
+This repo adds same + render_enhanced_watts (12.3 W) + render_gpu_text (44°C · 12% · 22.6W).
+Original: https://raw.githubusercontent.com/alexleigh/pve-mods/main/v8.0.4-pwt4.0.6/patches/proxmoxlib.js.patch
