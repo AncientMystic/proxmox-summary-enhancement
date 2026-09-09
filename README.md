@@ -26,6 +26,8 @@ version-guarded, backup-first implementation for PVE 9.x with NVIDIA + Intel RAP
   <img src="https://github.com/AncientMystic/proxmox-summary-enhancement/blob/main/screenshots/CPU-DRAWM-W-Graph.JPG" alt="CPU / DRAM Power Usage History" width="850"/>
 </p>
 
+(times displayed just the same as every other graph but removed here for privacy.) 
+
 ## What you get
 
 **Status box (live, polled with node status ~1s), in this order under Manager Version:**
