@@ -8,7 +8,7 @@ LATEST="$(ls -dt ${BACKUP_ROOT_GLOB} 2>/dev/null | head -n1 || true)"
 if [ -z "${LATEST}" ]; then echo "no backup found at ${BACKUP_ROOT_GLOB}" >&2; exit 2; fi
 if [ "${MODE}" != "--latest" ]; then echo "usage: $0 --latest  (would restore ${LATEST})" >&2; exit 2; fi
 echo "restoring from ${LATEST}"
-for f in "/usr/share/perl5/PVE/API2/Nodes.pm" "/usr/share/pve-manager/js/pvemanagerlib.js" "/usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js"; do
+for f in "/usr/share/perl5/PVE/API2/Nodes.pm" "/usr/share/perl5/PVE/API2/Qemu.pm" "/usr/share/pve-manager/js/pvemanagerlib.js" "/usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js"; do
   if [ -f "${LATEST}${f}" ]; then cp -a "${LATEST}${f}" "$f"; echo "restored $f"; else echo "WARN missing in backup: $f"; fi
 done
 systemctl disable --now pve-enhanced-collector.timer 2>/dev/null || true

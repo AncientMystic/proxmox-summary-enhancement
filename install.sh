@@ -38,6 +38,7 @@ fi
 
 TARGETS=(
   "/usr/share/perl5/PVE/API2/Nodes.pm"
+  "/usr/share/perl5/PVE/API2/Qemu.pm"
   "/usr/share/pve-manager/js/pvemanagerlib.js"
   "/usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js"
 )
@@ -52,8 +53,10 @@ for c in sensors nvidia-smi python3 systemctl; do have "$c" && echo "ok $c" || e
 
 if [ "$CHECK_ONLY" -eq 1 ]; then
   echo "-- check-only: would backup to ${BACKUP_DIR}, patch 3 files, install collector+timer, restart pvedaemon+pveproxy --"
-  echo "[backend]"
-  python3 "${REPO_DIR}/src/patch-backend.py" --check-only || echo "(backend not yet patched - expected before install)"
+  echo "[backend node]"
+  python3 "${REPO_DIR}/src/patch-backend.py" --check-only || echo "(node backend not yet patched - expected before install)"
+  echo "[backend qemu guest]"
+  python3 "${REPO_DIR}/src/patch-qemu-backend.py" --check-only || echo "(qemu backend not yet patched - expected before install)"
   echo "[frontend]"
   python3 "${REPO_DIR}/src/patch-frontend-js.py" --check-only || echo "(frontend not yet patched - expected before install)"
   exit 0
@@ -69,8 +72,9 @@ sha256sum "${TARGETS[@]}" | tee "${BACKUP_DIR}/SHA256SUMS"
 cp -a "${REPO_DIR}/VERSION" "${BACKUP_DIR}/" 2>/dev/null || true
 echo "backup done"
 
-echo "-- patch backend --"
+echo "-- patch backend (node + qemu guest) --"
 python3 "${REPO_DIR}/src/patch-backend.py" --apply
+python3 "${REPO_DIR}/src/patch-qemu-backend.py" --apply
 
 echo "-- patch frontend --"
 python3 "${REPO_DIR}/src/patch-frontend-js.py" --apply

@@ -285,6 +285,153 @@ def apply():
             print("hooked Summary destroy")
     MGR.write_text(mgr)
     print("patched pvemanagerlib.js")
+    patch_guest(mgr_path=MGR)
+    return 0
+
+GUEST_ROWS = """\t{
+\t    itemId: 'vgpuprofile',
+\t    iconCls: 'fa fa-video-camera fa-fw',
+\t    title: gettext('vGPU:'),
+\t    hidden: true,
+\t    value: '',
+\t},
+"""
+
+# Merged single row: profile name left-aligned, VRAM usage right-aligned, native bar below.
+# (pmxInfoWidget renders {usage} unescaped, so floated divs paint natively.)
+GUEST_FETCH_JS = """            if (view.pveSelNode.data.type === 'qemu') {
+                var fetchVgpu = function () {
+                    var nodename = view.pveSelNode.data.node;
+                    var vmid = view.pveSelNode.data.vmid;
+                    Proxmox.Utils.API2Request({
+                        url: `/api2/extjs/nodes/${nodename}/qemu/${vmid}/vgpu-info`,
+                        method: 'GET',
+                        success: function (response) {
+                            var d = (response.result && response.result.data) || {};
+                            var profRow = view.down('#vgpuprofile');
+                            if (!profRow) { return; }
+                            if (d.present) {
+                                profRow.setVisible(true);
+                                var left = d.name || d.type || 'vGPU';
+                                if (d.fb_used != null && d.fb_total) {
+                                    var frac = d.fb_total > 0 ? d.fb_used / d.fb_total : 0;
+                                    profRow.setPrintBar(true);
+                                    profRow.updateValue(
+                                        left + ' - ' + Proxmox.Utils.format_size(d.fb_used) + ' / ' + Proxmox.Utils.format_size(d.fb_total),
+                                        frac,
+                                    );
+                                } else {
+                                    profRow.setPrintBar(false);
+                                    profRow.updateValue(left);
+                                }
+                            } else {
+                                profRow.setVisible(false);
+                            }
+                        },
+                        failure: function () {
+                            var profRow = view.down('#vgpuprofile');
+                            if (profRow) { profRow.setVisible(false); }
+                        },
+                    });
+                };
+                fetchVgpu();
+                view.vgpuTask = Ext.TaskManager.start({ run: fetchVgpu, interval: 10000 });
+                view.on('destroy', function () {
+                    if (view.vgpuTask) { Ext.TaskManager.stop(view.vgpuTask); }
+                });
+            }
+"""
+
+def patch_guest(mgr_path):
+    """Per-VM vGPU rows on GuestStatusView (QEMU only, hidden otherwise). Idempotent."""
+    mgr = mgr_path.read_text()
+    if "Ext.define('PVE.panel.GuestStatusView'" not in mgr:
+        print("GuestStatusView missing, abort guest patch", file=sys.stderr); return 2
+    guest_section = mgr.split("Ext.define('PVE.panel.GuestStatusView'")[1].split("updateTitle")[0]
+    # v1.1.x upgrade: two-row layout (profile text + memory bar) -> merged single row
+    old_mem_row = """\t{
+\t    itemId: 'vgpumem',
+\t    iconCls: 'fa fa-video-camera fa-fw',
+\t    title: gettext('vGPU memory'),
+\t    hidden: true,
+\t    value: '',
+\t},
+"""
+    if mgr.count(old_mem_row) == 1:
+        mgr = mgr.replace(old_mem_row, "", 1)
+        print("removed old guest vGPU memory row (merged)")
+        guest_section = mgr.split("Ext.define('PVE.panel.GuestStatusView'")[1].split("updateTitle")[0]
+    old_fetch_tail = """                            var profRow = view.down('#vgpuprofile');
+                            var memRow = view.down('#vgpumem');
+                            if (!profRow || !memRow) { return; }"""
+    if old_fetch_tail in mgr:
+        # replace whole old fetch block (memRow-based) with the merged version
+        start = mgr.find("            if (view.pveSelNode.data.type === 'qemu') {")
+        end_marker = """                view.on('destroy', function () {
+                    if (view.vgpuTask) { Ext.TaskManager.stop(view.vgpuTask); }
+                });
+            }
+"""
+        end = mgr.find(end_marker, start)
+        if start != -1 and end != -1:
+            mgr = mgr[:start] + GUEST_FETCH_JS.rstrip() + mgr[end + len(end_marker):]
+            print("upgraded guest vGPU fetch to merged row")
+        else:
+            print("WARN: old guest fetch bounds not found, left as-is", file=sys.stderr)
+    elif 'float:left' in mgr:
+        # v1.1.3 float layout -> plain 'name - used / total' separator (floats collapse in widget)
+        # anchor BACKWARD/forward from the unique float marker so duplicate qemu-if lines elsewhere can't mislead us
+        pos = mgr.find('float:left')
+        start = mgr.rfind("            if (view.pveSelNode.data.type === 'qemu') {", 0, pos)
+        end_marker = """                view.on('destroy', function () {
+                    if (view.vgpuTask) { Ext.TaskManager.stop(view.vgpuTask); }
+                });
+            }
+"""
+        end = mgr.find(end_marker, pos)
+        if start != -1 and end != -1:
+            mgr = mgr[:start] + GUEST_FETCH_JS.rstrip() + mgr[end + len(end_marker):]
+            print("upgraded guest vGPU fetch to plain separator")
+        else:
+            print("WARN: guest fetch bounds not found, left as-is", file=sys.stderr)
+    # 1) rows after Bootdisk (rootfs) item
+    guest_anchor = """            renderer: function (used, max) {
+                var me = this;
+                me.setPrintBar(used > 0);
+                if (used === 0) {
+                    return Proxmox.Utils.render_size(max);
+                } else {
+                    return Proxmox.Utils.render_size_usage(used, max);
+                }
+            },
+        },"""
+    if 'vgpuprofile' not in guest_section:
+        if mgr.count(guest_anchor) != 1:
+            print(f"guest rows anchor count={mgr.count(guest_anchor)}, abort guest rows", file=sys.stderr); return 2
+        mgr = mgr.replace(guest_anchor, guest_anchor + "\n" + GUEST_ROWS.rstrip(), 1)
+        print("added guest vGPU rows")
+    else:
+        print("guest vGPU rows already patched")
+    # 2) controller fetch (qemu branch before lxc early-return)
+    lxc_branch = """        init: function (view) {
+            if (view.pveSelNode.data.type !== 'lxc') {
+                return;
+            }"""
+    if 'vgpu-info' not in mgr and lxc_branch in mgr:
+        if mgr.count(lxc_branch) != 1:
+            print("guest controller anchor not unique, abort guest fetch", file=sys.stderr); return 2
+        mgr = mgr.replace(
+            lxc_branch,
+            "        init: function (view) {\n" + GUEST_FETCH_JS.rstrip() + "\n            if (view.pveSelNode.data.type !== 'lxc') {\n                return;\n            }",
+            1,
+        )
+        print("added guest vGPU fetch")
+    elif 'vgpu-info' in mgr:
+        print("guest vGPU fetch already patched")
+    else:
+        print("guest controller anchor missing, abort guest fetch", file=sys.stderr); return 2
+    mgr_path.write_text(mgr)
+    print("patched guest summary")
     return 0
 
 if __name__ == "__main__":
