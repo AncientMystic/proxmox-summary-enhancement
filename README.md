@@ -26,7 +26,12 @@ version-guarded, backup-first implementation for PVE 9.x with NVIDIA + Intel RAP
   <img src="https://github.com/AncientMystic/proxmox-summary-enhancement/blob/main/screenshots/CPU-DRAWM-W-Graph.JPG" alt="CPU / DRAM Power Usage History" width="850"/>
 </p>
 
-(times displayed just the same as every other graph but removed here for privacy.) 
+(times displayed just the same as every other graph but removed here for privacy.)
+
+## New Feature - Per VM vGPU info: 
+<p align="center">
+  <img src="https://github.com/AncientMystic/proxmox-summary-enhancement/blob/main/screenshots/per-vm-vgpu.JPG" alt="Per VM vGPU profile info" width="850"/>
+</p> 
 
 ## What you get
 
