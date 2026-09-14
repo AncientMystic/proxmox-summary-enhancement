@@ -14,26 +14,25 @@ version-guarded, backup-first implementation for PVE 9.x with NVIDIA + Intel RAP
 
 ## Screenshots
 
-<!--
-  HOW TO ADD YOUR IMAGES: replace each PASTE_*_URL_HERE below with your image
-  link (GitHub issue attachment URL or docs/screenshots/*.png path), keeping
-  the three stacked vertically in this order:
-    1. status box (temps / power / vGPU profiles list)
-    2. GPU + CPU/DRAM power history graphs
-    3. full Node Summary page overview
--->
 
 <p align="center">
-  <img src="PASTE_SCREENSHOT_1_URL_HERE" alt="Node Summary status box with CPU and GPU temps, power readings and vGPU profiles list" width="850"/>
+  <img src="https://github.com/AncientMystic/proxmox-summary-enhancement/blob/main/screenshots/proxmox-summary-dash.JPG" alt="Node Summary status box with CPU and GPU temps, power readings and vGPU profiles list" width="850"/>
 </p>
 
 <p align="center">
-  <img src="PASTE_SCREENSHOT_2_URL_HERE" alt="GPU power temperature usage and CPU DRAM power history graphs" width="850"/>
+  <img src="https://github.com/AncientMystic/proxmox-summary-enhancement/blob/main/screenshots/gpu-graph.JPG" alt="GPU power temperature usage history" width="850"/>
 </p>
 
 <p align="center">
-  <img src="PASTE_SCREENSHOT_3_URL_HERE" alt="Full Node Summary page overview with enhancements" width="850"/>
+  <img src="https://github.com/AncientMystic/proxmox-summary-enhancement/blob/main/screenshots/CPU-DRAWM-W-Graph.JPG" alt="CPU / DRAM Power Usage History" width="850"/>
 </p>
+
+(times displayed just the same as every other graph but removed here for privacy.)
+
+## New Feature - Per VM vGPU info: 
+<p align="center">
+  <img src="https://github.com/AncientMystic/proxmox-summary-enhancement/blob/main/screenshots/per-vm-vgpu.JPG" alt="Per VM vGPU profile info" width="850"/>
+</p> 
 
 ## What you get
 
