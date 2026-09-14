@@ -240,6 +240,14 @@ def apply():
             print("added multiField to vGPU row")
     # charts: need model + enhancedStore def + charts after Memory Pressure Stall + start/stop hooks
     # (missing model/startUpdate = blank charts stuck at 1970 — v1.0.2 fix)
+    old_store_v1 = """        var enhancedStore = Ext.create('Proxmox.data.UpdateStore', {
+            interval: 10000,
+            autoStart: true,
+            model: 'pve-rrd-enhanced',
+            storeid: 'pve-enhanced-history',
+            proxy: { type: 'proxmox', url: '/api2/json/nodes/' + nodename + '/enhanced-history' },
+        });
+"""
     if 'enhancedStore' not in mgr:
         model_def = """Ext.define('pve-rrd-enhanced', {
     extend: 'Ext.data.Model',
@@ -249,28 +257,57 @@ def apply():
 
 """
         store_anchor = "        var rrdstore = Ext.create('Proxmox.data.RRDStore', {"
-        store_def = """        var enhancedStore = Ext.create('Proxmox.data.UpdateStore', {
+        store_def = """        var enhancedTimeframe = 'day';
+        try {
+            var _enhSp = Ext.state.Manager.getProvider();
+            var _enhSt = _enhSp && _enhSp.get('proxmoxRRDTypeSelection');
+            if (_enhSt && _enhSt.timeframe) { enhancedTimeframe = _enhSt.timeframe; }
+        } catch (e) {}
+        var enhancedStore = Ext.create('Proxmox.data.UpdateStore', {
             interval: 10000,
             autoStart: true,
             model: 'pve-rrd-enhanced',
             storeid: 'pve-enhanced-history',
-            proxy: { type: 'proxmox', url: '/api2/json/nodes/' + nodename + '/enhanced-history' },
+            proxy: { type: 'proxmox', url: '/api2/json/nodes/' + nodename + '/enhanced-history?timeframe=' + enhancedTimeframe },
+        });
+        me.mon(Ext.state.Manager.getProvider(), 'statechange', function (provider, skey, svalue) {
+            if (skey === 'proxmoxRRDTypeSelection' && svalue && svalue.timeframe) {
+                enhancedStore.proxy.url = '/api2/json/nodes/' + nodename + '/enhanced-history?timeframe=' + svalue.timeframe;
+                enhancedStore.reload();
+            }
         });
 """
-        if store_anchor in mgr:
-            mgr = mgr.replace(store_anchor, model_def + store_def + "\n" + store_anchor, 1)
-        chart_anchor = "                            title: gettext('Memory Pressure Stall'),"
-        # insert AFTER the closing of that chart object: find 'store: rrdstore,' then its closing '},'
-        mem_anchor = "                            fields: ['pressurememorysome', 'pressurememoryfull'],"
-        if mem_anchor in mgr:
-            idx = mgr.find(mem_anchor)
-            nxt = mgr.find("store: rrdstore,", idx)
-            if nxt != -1:
-                close_idx = mgr.find("},", nxt)
-                if close_idx != -1:
-                    ins = close_idx + len("},")
-                    mgr = mgr[:ins] + "\n" + CHARTS_BLOCK.rstrip() + mgr[ins:]
-                    print("added enhanced charts")
+    # v2 store upgrade runs regardless of the fresh-install guard above:
+    # existing installs already contain 'enhancedStore', so the block above skips them.
+    if old_store_v1 in mgr:
+        # rebuild new def from the template above (strip to the create call only)
+        new_store_only = """        var enhancedStore = Ext.create('Proxmox.data.UpdateStore', {
+            interval: 10000,
+            autoStart: true,
+            model: 'pve-rrd-enhanced',
+            storeid: 'pve-enhanced-history',
+            proxy: { type: 'proxmox', url: '/api2/json/nodes/' + nodename + '/enhanced-history?timeframe=' + enhancedTimeframe },
+        });
+"""
+        # enhancedTimeframe var + listener live with the fresh template; for upgrades,
+        # insert them right before the store creation (mirrors the fresh path layout)
+        tf_prelude = """        var enhancedTimeframe = 'day';
+        try {
+            var _enhSp = Ext.state.Manager.getProvider();
+            var _enhSt = _enhSp && _enhSp.get('proxmoxRRDTypeSelection');
+            if (_enhSt && _enhSt.timeframe) { enhancedTimeframe = _enhSt.timeframe; }
+        } catch (e) {}
+"""
+        tf_listener = """
+        me.mon(Ext.state.Manager.getProvider(), 'statechange', function (provider, skey, svalue) {
+            if (skey === 'proxmoxRRDTypeSelection' && svalue && svalue.timeframe) {
+                enhancedStore.proxy.url = '/api2/json/nodes/' + nodename + '/enhanced-history?timeframe=' + svalue.timeframe;
+                enhancedStore.reload();
+            }
+        });
+"""
+        mgr = mgr.replace(old_store_v1, tf_prelude + new_store_only + tf_listener, 1)
+        print("upgraded enhancedStore to timeframe-aware")
     # Summary activate/destroy must start/stop enhancedStore (else blank charts at 1970)
     if 'enhancedStore.startUpdate()' not in mgr:
         act_old = "                    rstore.startUpdate(); // just to be sure\n                    rrdstore.startUpdate();"

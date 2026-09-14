@@ -150,6 +150,96 @@ __PACKAGE__->register_method({
     }});
 '''
         t = t.replace("__PACKAGE__->register_method({\n    name => 'netstat'", hist + "\n__PACKAGE__->register_method({\n    name => 'netstat'", 1)
+    elif "ENH-HIST-V2-TIMEFRAME" not in t:
+        # v2: windowed + bucket-averaged + numerics-only (mirrors rrddata behaviour,
+        # fixes blank charts from multi-MB full-ring payloads)
+        start = "__PACKAGE__->register_method({\n    name => 'enhanced_history',"
+        si = t.find(start)
+        ei = t.find("__PACKAGE__->register_method({\n    name => 'netstat'")
+        if si != -1 and ei != -1 and si < ei:
+            hist2 = r'''
+__PACKAGE__->register_method({
+    name => 'enhanced_history',
+    path => 'enhanced-history',
+    method => 'GET',
+    permissions => { check => ['perm', '/nodes/{node}', ['Sys.Audit']] },
+    description => "Enhanced sensors history (GPU/CPU/DRAM, windowed + downsampled like rrddata)",
+    proxyto => 'node',
+    parameters => {
+        additionalProperties => 0,
+        properties => {
+            node => get_standard_option('pve-node'),
+            timeframe => {
+                description => "Window like rrddata (hour/day/week/month/year)",
+                type => 'string',
+                enum => ['hour', 'day', 'week', 'month', 'year'],
+                optional => 1,
+            },
+        },
+    },
+    returns => { type => "array" },
+    code => sub {
+        my ($param) = @_;
+        # ENH-HIST-V2-TIMEFRAME
+        my %win = (hour => 3700, day => 90000, week => 700000, month => 3100000, year => 32000000);
+        my $tf = $param->{timeframe} // 'day';
+        my $cut = time() - ($win{$tf} // $win{day});
+        my $f = '/var/lib/pve-enhanced/history.json';
+        return [] unless -f $f;
+        # V3-UNCAPPED-READ: PVE::Tools::file_get_contents caps at 1MB (pmxcfs
+        # limit) and dies on our multi-MB ring, which eval-swallowed to [].
+        # Slurp directly with no cap instead.
+        my $c = eval { open my $fh, '<', $f or die $!; local $/; my $d = <$fh>; close $fh; $d } // '[]';
+        my $a = eval { JSON::decode_json($c) } // [];
+        $a = [] unless ref($a) eq 'ARRAY';
+        my @nums = qw(cputemp gputemp gpuutil gpupower cpupowerw dramw);
+        my @pts;
+        for my $p (@$a) {
+            next unless ref($p) eq 'HASH' && defined($p->{time}) && $p->{time} >= $cut;
+            my %o = (time => int($p->{time}));
+            for my $k (@nums) {
+                my $v = $p->{$k};
+                $o{$k} = (defined($v) && "$v" =~ /^-?[\d.]+$/) ? $v + 0 : undef;
+            }
+            push @pts, \%o;
+        }
+        if (@pts > 800) {
+            my $per = int(@pts / 800) + 1;
+            my @avg;
+            for (my $i = 0; $i < @pts; $i += $per) {
+                my $e = $i + $per - 1;
+                $e = $#pts if $e > $#pts;
+                my ($n, $tsum) = (0, 0);
+                my (%ssum, %cnt);
+                for my $q (@pts[$i .. $e]) {
+                    $n++; $tsum += $q->{time};
+                    for my $k (@nums) {
+                        if (defined($q->{$k})) { $ssum{$k} += $q->{$k}; $cnt{$k}++; }
+                    }
+                }
+                my %o = (time => int($tsum / $n));
+                for my $k (@nums) { $o{$k} = $cnt{$k} ? $ssum{$k} / $cnt{$k} : undef; }
+                push @avg, \%o;
+            }
+            @pts = @avg;
+        }
+        return \@pts;
+    }});
+'''
+            t = t[:si] + hist2.strip() + "\n\n" + t[ei:]
+            print("upgraded enhanced-history to v2 (windowed)")
+        else:
+            print("WARN: enhanced-history bounds not found", file=sys.stderr)
+    if "ENH-HIST-V2-TIMEFRAME" in t and "V3-UNCAPPED-READ" not in t:
+        # v3: the history method reads via PVE::Tools::file_get_contents, which
+        # caps at 1MB and dies on our multi-MB ring (eval-swallowed to []).
+        old_read = "        my $c = eval { PVE::Tools::file_get_contents($f) } // '[]';"
+        new_read = "        my $c = eval { open my $fh, '<', $f or die $!; local $/; my $d = <$fh>; close $fh; $d } // '[]';  # V3-UNCAPPED-READ"
+        if t.count(old_read) == 1:
+            t = t.replace(old_read, new_read, 1)
+            print("upgraded enhanced-history to v3 (uncapped read)")
+        else:
+            print(f"WARN: capped-read line count={t.count(old_read)}, left as-is", file=sys.stderr)
     P.write_text(t)
     print("backend patched")
     return 0

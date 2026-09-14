@@ -14,30 +14,32 @@ version-guarded, backup-first implementation for PVE 9.x with NVIDIA + Intel RAP
 
 ## Screenshots
 
+<!--
+  HOW TO ADD YOUR IMAGES: replace each PASTE_*_URL_HERE below with your image
+  link (GitHub issue attachment URL or docs/screenshots/*.png path), keeping
+  the three stacked vertically in this order:
+    1. status box (temps / power / vGPU profiles list)
+    2. GPU + CPU/DRAM power history graphs
+    3. full Node Summary page overview
+-->
+
 <p align="center">
-  <img src="https://github.com/AncientMystic/proxmox-summary-enhancement/blob/main/screenshots/proxmox-summary-dash.JPG" alt="Node Summary status box with CPU and GPU temps, power readings and vGPU profiles list" width="850"/>
+  <img src="PASTE_SCREENSHOT_1_URL_HERE" alt="Node Summary status box with CPU and GPU temps, power readings and vGPU profiles list" width="850"/>
 </p>
 
 <p align="center">
-  <img src="https://github.com/AncientMystic/proxmox-summary-enhancement/blob/main/screenshots/gpu-graph.JPG" alt="GPU power temperature usage history" width="850"/>
+  <img src="PASTE_SCREENSHOT_2_URL_HERE" alt="GPU power temperature usage and CPU DRAM power history graphs" width="850"/>
 </p>
 
 <p align="center">
-  <img src="https://github.com/AncientMystic/proxmox-summary-enhancement/blob/main/screenshots/CPU-DRAWM-W-Graph.JPG" alt="CPU / DRAM Power Usage History" width="850"/>
+  <img src="PASTE_SCREENSHOT_3_URL_HERE" alt="Full Node Summary page overview with enhancements" width="850"/>
 </p>
-
-(times displayed just the same as every other graph but removed here for privacy.)
-
-## New Feature - Per VM vGPU info: 
-<p align="center">
-  <img src="https://github.com/AncientMystic/proxmox-summary-enhancement/blob/main/screenshots/per-vm-vgpu.JPG" alt="Per VM vGPU profile info" width="850"/>
-</p> 
 
 ## What you get
 
 **Status box (live, polled with node status ~1s), in this order under Manager Version:**
 - `CPU temp` — bar + text, `sensors -j` `coretemp-isa-0000` → `Package id 0` → `temp1_input` (crit `temp1_crit`, 110°C on i7-7820X)
-- `GPU temp` — bar + text, `nvidia-smi` `temperature.gpu` (crit 95°C). Pass-through GPUs are invisible to the host by design and correctly absent here.
+- `GPU temp` — bar + text, `nvidia-smi` `temperature.gpu` (crit 95°C). Pass-through GPUs (e.g. Arc A310 bound to `vfio-pci`) are invisible to the host by design and correctly absent here.
 - `CPU package power` — `W`, Intel RAPL `intel-rapl:0` (`package-0`) `energy_uj` delta
 - `GPU power` — `W`, `nvidia-smi` `power.draw`
 - `DRAM power` — `W`, Intel RAPL `intel-rapl:0:0` (`dram`) `energy_uj` delta
@@ -49,7 +51,12 @@ version-guarded, backup-first implementation for PVE 9.x with NVIDIA + Intel RAP
 - `GPU Power / Temp / Usage (enhanced)` — W, °C, % from `nvidia-smi`
 - `CPU Package Power (W)` — RAPL package domain
 - `DRAM Power (W)` — RAPL DRAM domain
-- Backed by a dedicated `pve-rrd-enhanced` model + `UpdateStore` polling new API `GET /nodes/{node}/enhanced-history` every 10s (auto-started/stopped with the Summary panel). The stock `pve2-node` RRD schema is deliberately untouched — no RRD migration breakage on update.
+- Backed by a dedicated `pve-rrd-enhanced` model + `UpdateStore` polling new API `GET /nodes/{node}/enhanced-history?timeframe=<hour|day|week|month|year>` every 10s (auto-started/stopped with the Summary panel, follows the type selector like `RRDStore`). The endpoint windows the ring to the requested timeframe, bucket-averages down to ≤800 points, and returns numerics only — mirroring `rrddata` behavior. The stock `pve2-node` RRD schema is deliberately untouched — no RRD migration breakage on update. Lesson learned the hard way: the endpoint slurps the ring file directly because `PVE::Tools::file_get_contents` enforces a 1MB pmxcfs read cap that silently emptied responses once history grew past it.
+
+**Per-VM vGPU panel (QEMU guests with an mdev mapping only):**
+- On a VM's Summary → status box, one extra row appears *only* when that VM has a vGPU (`hostpciN: ...mdev=...` in its config; other VMs and LXCs are untouched):
+- `vGPU:` — profile name left-aligned with that VM's VRAM usage right-aligned plus the native usage bar, e.g. `GRID RTX6000-12Q` … `1.0 / 12.0 GiB`
+- Sourced from new API `GET /nodes/{node}/qemu/{vmid}/vgpu-info` (matches the VM's configured mdev type against the collector's live per-VM list, sysfs-name fallback so stopped VMs still show their profile with `-` usage). The guest panel polls it every 10s and hides both rows when no vGPU is present or the call fails.
 
 ## Requirements (host)
 
@@ -61,7 +68,7 @@ version-guarded, backup-first implementation for PVE 9.x with NVIDIA + Intel RAP
 - Hard-refresh the browser after install (Ctrl+Shift+R); very old browsers without optional-chaining (`?.`) support may not render the new rows.
 
 Tested against:
-- `i7-7820X 8c/16t / X299 / 96GB / RTX 2060 12GB vGPU (nvidia-262 / GRID RTX6000-12Q)`
+- `i7-7820X 8c/16t / X299 / 96GB / Arc A310 passthrough (67:00, vfio-pci) + RTX 2060 12GB vGPU (nvidia-262 / GRID RTX6000-12Q, 130W cap)`
 - `sensors -j` (`coretemp-isa-0000` / `Package id 0`), `nvidia-smi 580.126.08`, `nvidia-smi vgpu -q` (per-VM FB), `pve-manager 9.2.11/f6997e6`, `proxmox-widget-toolkit 5.2.8`, kernel `6.17.13-6-pve`, EFI boot
 
 ## Layout
@@ -70,13 +77,14 @@ Tested against:
 .
 ├── README.md
 ├── LICENSE                        # MIT for these scripts (Proxmox files stay AGPL-3.0)
-├── VERSION                        # 1.0.4-pve9.2.11
+├── VERSION                        # 1.1.0-pve9.2.11
 ├── install.sh                     # guard → backup → patch → collector+timer → restart pvedaemon+pveproxy
 ├── uninstall.sh                   # stop timer → restore backups → restart pvedaemon+pveproxy
 ├── src/
 │   ├── collect-enhanced-stats.sh      # 10s sampler: sensors + nvidia-smi (+vgpu -q, all instances) + RAPL → JSON ring
 │   ├── patch-backend.py               # idempotent Nodes.pm patch (live status fields + enhanced-history)
-│   ├── patch-frontend-js.py           # idempotent pvemanagerlib.js + proxmoxlib.js patch
+│   ├── patch-qemu-backend.py          # idempotent Qemu.pm patch (per-VM vgpu-info method)
+│   ├── patch-frontend-js.py           # idempotent pvemanagerlib.js + proxmoxlib.js patch (node + guest)
 │   ├── pve-enhanced-collector.service
 │   └── pve-enhanced-collector.timer   # OnBootSec=60s, every 10s (60s avoids early-boot nvidia-smi race)
 └── patches/
@@ -121,7 +129,7 @@ Collector state in `/var/lib/pve-enhanced/` is left in place on purpose (reinsta
 
 **Collector (`collect-enhanced-stats.sh`):** pure bash + embedded `python3` for JSON (no `jq`). Each run: `sensors -j` package temp, one `nvidia-smi --query-gpu` call (temp/util/power/mem/clocks), full `nvidia-smi vgpu -q` parse of **every** `vGPU ID` block (name, type→`nvidia-XXX` via sysfs `mdev_type` link, MDEV UUID, VM name, per-VM FB used/total) with `mdevctl`-list fallback covering all devices, RAPL package+dram watts as `Δenergy/1e6/Δt` with `max_energy_range_uj` wraparound handling (first run after boot yields `null` watts until a delta exists — by design). Writes `/run/pve-enhanced-live.json` (atomic tmp+rename) and appends to `/var/lib/pve-enhanced/history.json` trimmed to 4320 points. `USE_PCM_POWER=1` switches watts to a `pcm-power` sample with RAPL fallback.
 
-**Backend (`Nodes.pm`):** pve-mods pattern — live values merged into `status` (`cputemp` as `{used,total}` for the temp renderer, memory figures converted to bytes, `vgpulist` array passed through plus summed `vgpumem`), plus `enhanced-history` serving the JSON ring. The API prefers the collector live file (<30s old) with direct `sensors`/`nvidia-smi`/`mdevctl` fallback; watts always come from the live file (deltas can't be computed inside a stateless request).
+**Backend (`Nodes.pm`):** pve-mods pattern — live values merged into `status` (`cputemp` as `{used,total}` for the temp renderer, memory figures converted to bytes, `vgpulist` array passed through plus summed `vgpumem`), plus `enhanced-history` serving the JSON ring windowed by `timeframe` with bucket-averaged numerics (see above). The API prefers the collector live file (<30s old) with direct `sensors`/`nvidia-smi`/`mdevctl` fallback; watts always come from the live file (deltas can't be computed inside a stateless request).
 
 **Frontend:** `StatusView` rows use the same data shapes as stock widgets (`{used,total}` + size/temp renderers), so bars and thresholds behave natively. The vGPU row uses the stock multi-field record pattern (like the Kernel Version row) because `updateField` only invokes `updateValue` for `multiField`/`textField`/`valueField` rows — a renderer-only row renders empty with no error, which is why the pattern matters. History charts reuse `proxmoxRRDChart` bound to an `UpdateStore` with a proper date model (`pve-rrd-enhanced`), auto-started/stopped with the panel.
 
@@ -129,7 +137,7 @@ Collector state in `/var/lib/pve-enhanced/` is left in place on purpose (reinsta
 
 - Rows show `-`/`No Data`: check sources in order — `sensors -j | python3 -m json.tool | grep -A5 coretemp`, `nvidia-smi --query-gpu=...`, `nvidia-smi vgpu -q | head -n 40`, `cat /sys/class/powercap/intel-rapl/intel-rapl:0/name`, `cat /run/pve-enhanced-live.json`, `journalctl -u pve-enhanced-collector --no-pager | tail`
 - New rows/graphs missing after install: hard-refresh (Ctrl+Shift+R) or incognito; confirm `grep -c enhancedStore /usr/share/pve-manager/js/pvemanagerlib.js` is non-zero and `pvesh get /nodes/pve/status --output-format json | grep -o vgpulist` hits; `systemctl restart pveproxy` re-serves JS
-- Graphs stuck at 1970/empty: `cat /var/lib/pve-enhanced/history.json | head -c 300` should show epoch-second `time` values; needs 2–3 timer ticks (~30s) before watts appear; check Summary `activate` hook ran (leave and re-enter the Summary tab)
+- Graphs stuck at 1970/empty: `cat /var/lib/pve-enhanced/history.json | head -c 300` should show epoch-second `time` values; needs 2–3 timer ticks (~30s) before watts appear; check Summary `activate` hook ran (leave and re-enter the Summary tab). If the file is fine but every timeframe returns `[]`, confirm the deployed method contains the uncapped slurp (`grep -c V3-UNCAPPED-READ /usr/share/perl5/PVE/API2/Nodes.pm` should print 1) — the stock `file_get_contents` helper caps at 1MB.
 - `pvedaemon` fails after patching: `perl -c /usr/share/perl5/PVE/API2/Nodes.pm` shows the line; restore from the newest `/var/backups/proxmox-summary-enhancement-*/` and report the `pve-manager` version so anchors can be updated
 - Version mismatch abort: compare `pveversion` + `dpkg -l`, hand-port using `patches/REFERENCE-*.patch`, or `--force`
 - `pcm-power` cross-check: `timeout 8 /usr/sbin/pcm-power 2>&1 | tail -n 30` package/DRAM watts should track RAPL within a few W
